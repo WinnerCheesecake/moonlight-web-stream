@@ -13,10 +13,12 @@ export class MicrophonePipe implements Pipe {
 
     static async getInfo(): Promise<PipeInfo> {
         return {
+            // This pipe only ever calls getUserMedia (see tryRequestMicrophone below) — an
+            // earlier getDisplayMedia (screen share) check here was unrelated and could
+            // report this pipe unsupported even when mic capture itself works fine.
             environmentSupported: "navigator" in globalObject() &&
                 "mediaDevices" in navigator &&
-                "getUserMedia" in navigator.mediaDevices &&
-                typeof navigator.mediaDevices.getDisplayMedia == "function"
+                "getUserMedia" in navigator.mediaDevices
         }
     }
 
@@ -40,7 +42,11 @@ export class MicrophonePipe implements Pipe {
 
     private triedToAquire = false
 
-    private async tryRequestMicrophone() {
+    // Public (not private) so a UI button can trigger this directly, instead of relying
+    // solely on it firing as a side effect of onUserInteraction() from an unrelated
+    // click/keypress — that coupling is easy to miss, especially once a Guest has no
+    // mouse/keyboard control by default (see control_gate on the server).
+    async tryRequestMicrophone() {
         if (this.microphoneTrack || this.triedToAquire) {
             return
         }
@@ -53,12 +59,15 @@ export class MicrophonePipe implements Pipe {
             microphone = await navigator.mediaDevices.getUserMedia({ audio: true })
         } catch (e) {
             this.logger?.debug(`Failed to aquire microphone: ${e}`)
-            showNotification(`Failed to aquire microphone!`)
+            showNotification(`Failed to aquire microphone: ${e}`)
+            // Let the button be pressed again (e.g. after the user fixes a site permission).
+            this.triedToAquire = false
             return
         }
 
         this.microphoneTrack = microphone.getAudioTracks()[0]
         this.base.setTrack(this.microphoneTrack)
+        showNotification("Microphone connected", "info")
     }
 
     onUserInteraction() {

@@ -67,6 +67,10 @@ hex = { version = "0.4.3" }
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_System_Console"] }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+audiopus = { version = "0.2.0", default-features = false, features = ["decoder"] }
+coreaudio-rs = { version = "0.14.2", default-features = false, features = ["audio_unit", "core_audio"] }
+
 [lints.clippy]
 too_many_arguments = "allow"
 unwrap_used = "warn"

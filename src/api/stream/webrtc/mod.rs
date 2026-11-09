@@ -38,6 +38,7 @@ use rtc::peer_connection::configuration::media_engine::{MIME_TYPE_FLEX_FEC03, MI
 use rtc::rtp_transceiver::rtp_sender::{
     RTCPFeedback, RTCRtpCodec, RTCRtpCodecParameters, RTCRtpHeaderExtensionCapability, RtpCodecKind,
 };
+use rtc::rtp_transceiver::{RTCRtpTransceiverDirection, RTCRtpTransceiverInit};
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::{Arc, Mutex};
@@ -422,6 +423,35 @@ pub async fn webrtc_post(
 
     info!("created server webrtc peer");
 
+    // TODO: query microphone support
+    let mic_channel = MicChannel::new(&offer_sdp).await;
+    if mic_channel.is_some() {
+        // Must happen before set_remote_description: a transceiver added afterwards
+        // isn't retroactively matched against the offer already being processed (it only
+        // affects the *next* offer/answer cycle), and on_track only fires for
+        // transceivers the application added explicitly — not ones set_remote_description
+        // auto-creates internally for an otherwise-unmatched m-line. Without this, the
+        // mic m-line in the offer is accepted but nothing ever observes its track.
+        //
+        // This no longer collides with AudioChannel's host->guest audio transceiver
+        // (added below, after set_remote_description runs) — that now uses
+        // add_transceiver_from_track to get its own dedicated transceiver instead of
+        // add_track, which used to reuse *any* available sender-less audio transceiver
+        // it found, including this one.
+        if let Err(err) = peer
+            .add_transceiver_from_kind(
+                RtpCodecKind::Audio,
+                Some(RTCRtpTransceiverInit {
+                    direction: RTCRtpTransceiverDirection::Recvonly,
+                    ..Default::default()
+                }),
+            )
+            .await
+        {
+            error!(error = %err, "failed to add recvonly transceiver for guest mic");
+        }
+    }
+
     // Set remote description
     if let Err(err) = peer.set_remote_description(offer.clone()).await {
         error!(error = %err, description = %offer, "failed to set remote description");
@@ -439,9 +469,6 @@ pub async fn webrtc_post(
         .fold(VideoFormats::empty(), |formats, format| {
             formats | format.into_formats()
         });
-
-    // TODO: query microphone support
-    let mic_channel = MicChannel::new(&offer_sdp).await;
 
     // TODO: query audio support
     let audio_config = Some(AudioConfig::STEREO);
@@ -479,7 +506,12 @@ pub async fn webrtc_post(
         // TODO: what color space / range? is this in the sdp?
         color_space: ColorSpace::Rec709,
         color_range: ColorRange::Limited,
-        local_audio_play_mode: session.local_audio_play_mode,
+        // Ableton Together is collaborative listening, not one-way remote desktop:
+        // the Host must always keep hearing their own DAW, regardless of what the
+        // client's "play audio locally too" setting says (it defaults off, since
+        // upstream Moonlight is built for the opposite — gaming where the Host isn't
+        // expected to be listening at all).
+        local_audio_play_mode: true,
         // TODO: what audio config?
         audio_config: AudioConfig::STEREO,
         gamepads_attached: ActiveGamepads::empty(),
@@ -537,8 +569,6 @@ pub async fn webrtc_post(
             return Err(err.into());
         }
     };
-    let host_features = moonlight_stream.host_features();
-
     // Add audio and video track forwarding
     let audio_channel = match AudioChannel::new_track(&moonlight_stream, &*peer).await {
         Ok(value) => value,
@@ -577,6 +607,7 @@ pub async fn webrtc_post(
 
     // Complete negotiation
     let answer = peer.create_answer(None).await?;
+    info!(sdp = %answer.sdp, "generated webrtc answer sdp (debugging guest mic negotiation)");
 
     if let Err(err) = peer.set_local_description(answer.clone()).await {
         error!(error = %err, description = %answer, "failed to set local description");
@@ -584,6 +615,10 @@ pub async fn webrtc_post(
         peer.close().await?;
         return Err(err.into());
     }
+
+    // mic_channel is moved into the spawned task below; capture whether the client
+    // actually offered a mic track now, for the answer we build further down.
+    let client_offered_mic = mic_channel.is_some();
 
     // Keep the Moonlight transport alive while STUN/ICE gathering runs. Waiting here can
     // take several seconds when a configured STUN server is unreachable.
@@ -641,7 +676,13 @@ pub async fn webrtc_post(
         Session::parse(answer.sdp.as_bytes()).expect("failed to get parse sdp answer");
     let additional_answer = WebRTCSessionAnswer {
         app_name: app_title,
-        microphone: host_features.microphone,
+        // host_features.microphone reflects the vendored Moonlight-protocol crate's
+        // "Foundation" mic relay, which is permanently unreachable (is_foundation() can
+        // never be true against upstream Sunshine). We bypass that relay entirely: mic
+        // frames are decoded and written straight to a CoreAudio output device by the
+        // mic_channel below (see webrtc_loop's MicChannelEvent::OnFrame), so what the
+        // client should actually gate on is simply "did it offer a mic track".
+        microphone: client_offered_mic,
     };
     additional_answer.apply(&mut answer_sdp);
 

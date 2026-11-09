@@ -29,6 +29,7 @@ use crate::{
         video::{VideoChannel, VideoChannelEvent},
     },
     app::AppError,
+    control_gate,
 };
 
 pub async fn webrtc_loop(
@@ -87,10 +88,12 @@ pub async fn webrtc_loop(
                 }
             }
             Some(track) = async { if on_track.is_closed() { pending().await } else { on_track.recv().await } } => {
-                debug!("got remote track");
+                info!("got remote track");
 
                 if let Some(mic_channel) = &mut mic_channel {
                     mic_channel.set_track(track);
+                } else {
+                    warn!("got a remote track but no mic_channel was set up to consume it (client didn't offer a mic?)");
                 }
             }
             result = stream.drive() => {
@@ -163,7 +166,16 @@ pub async fn webrtc_loop(
                 let event = result?;
 
                 match event {
+                    // Sunshine assumes the Host machine is otherwise idle (streaming to a
+                    // console/TV); Ableton Together's Host is actively sitting at their own
+                    // computer running their DAW. So by default the Guest is a pure
+                    // viewer+mic — mouse/keyboard/gamepad input is only relayed while
+                    // control_gate::guest_has_control() is true (toggled from HostApp).
                     ControlChannelEvent::Packet(ControlPacket::WebState { sequence_number, keys }) => {
+                        if !control_gate::guest_has_control() {
+                            continue;
+                        }
+
                         // The server doesn't support this packet, so we must remove it
                         if sequence_number <= last_key_states_sequence_number && sequence_number.abs_diff(last_key_states_sequence_number) < 1000 {
                             // packets can be dropped when the sequence number is larger than the last the sequence number
@@ -189,6 +201,12 @@ pub async fn webrtc_loop(
 
                         continue;
                     }
+                    ControlChannelEvent::Packet(packet)
+                        if control_gate::is_guest_input_packet(&packet)
+                            && !control_gate::guest_has_control() =>
+                    {
+                        continue;
+                    }
                     ControlChannelEvent::Packet(packet) => {
                         if let Err(err) = stream.send_raw(packet) {
                             warn!(error = %err, "failed to relay webrtc client packet to server");
@@ -203,11 +221,10 @@ pub async fn webrtc_loop(
                 let event = result?;
 
                 match event {
-                    MicChannelEvent::OnFrame {
-                        timestamp,
-                        data,
-                    } => {
-                        stream.send_microphone_opus_data(timestamp, &data);
+                    // `stream` (the Moonlight-protocol connection) is deliberately not
+                    // involved here — see audio_bridge's module doc for why.
+                    MicChannelEvent::OnFrame { samples } => {
+                        crate::audio_bridge::push_mono_samples(&samples);
                     }
                     MicChannelEvent::Closed => {
                         warn!("the microphone channel got closed");

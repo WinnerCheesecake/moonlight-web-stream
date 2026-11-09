@@ -660,6 +660,38 @@ impl App {
             .set_default_user(user.map(User::id))
             .await
     }
+
+    /// Ableton Together always wants a Guest to be able to open the stream link with no
+    /// login step: creates a passwordless "Gość" user on the default (non-admin) role and
+    /// makes it the default_user, so an unauthenticated request (UserAuth::None, i.e. no
+    /// session cookie) is treated as this user instead of being rejected. Idempotent — a
+    /// no-op once a default user already exists, called from the admin login flow since
+    /// that's the first point an `&Admin` handle is available.
+    pub async fn ensure_default_guest(&self, admin: &Admin) -> Result<(), AppError> {
+        if self.default_user().await?.is_some() {
+            return Ok(());
+        }
+
+        let role = self.default_role().await?;
+
+        let guest = self
+            .add_user(
+                admin,
+                StorageUserAdd {
+                    role_id: role.id(),
+                    name: "Gość".to_string(),
+                    password: None,
+                    client_unique_id: "ableton-together-guest".to_string(),
+                },
+            )
+            .await?;
+
+        self.set_default_user(admin, Some(&guest)).await?;
+
+        info!("provisioned default passwordless Guest user for link-only joining");
+
+        Ok(())
+    }
     pub async fn default_user(&self) -> Result<Option<User>, AppError> {
         let Some(user) = self.inner.storage.default_user().await? else {
             return Ok(None);

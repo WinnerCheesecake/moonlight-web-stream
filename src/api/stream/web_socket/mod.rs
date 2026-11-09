@@ -181,7 +181,9 @@ async fn handle_ws(
         // TODO: color range?
         color_space: ColorSpace::Rec709,
         color_range: ColorRange::Limited,
-        local_audio_play_mode: stream_request.local_audio_play_mode,
+        // See the matching comment in webrtc/mod.rs: the Host must always keep hearing
+        // their own DAW while a Guest is connected.
+        local_audio_play_mode: true,
         audio_config: AudioConfig::STEREO,
         gamepads_attached: ActiveGamepads::empty(),
         gamepads_persist_after_disconnect: false,

@@ -43,8 +43,10 @@ mod api;
 mod app;
 mod web;
 
+mod audio_bridge;
 mod cli;
 mod config;
+mod control_gate;
 mod human_json;
 
 #[actix_web::main]
@@ -100,6 +102,8 @@ async fn main() {
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("failed to set ring crypto provider as default");
+
+    tokio::spawn(control_gate::serve());
 
     // Start the server
     if let Err(err) = start(config).await {

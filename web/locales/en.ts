@@ -25,6 +25,8 @@ export const en = {
         hideKeyboard: "Hide Keyboard",
         fullscreen: "Fullscreen",
         stats: "Stats",
+        requestMicrophone: "Request Microphone",
+        microphoneNotSupported: "Microphone isn't supported in this browser",
         exit: "Exit",
         mouseMode: "Mouse Mode",
         touchMode: "Touch Mode",

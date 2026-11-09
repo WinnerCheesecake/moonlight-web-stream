@@ -13,7 +13,7 @@ use rtc::{
         extension::{HeaderExtension, playout_delay_extension::PlayoutDelayExtension},
     },
     rtp_transceiver::{
-        SSRC,
+        RTCRtpTransceiverDirection, RTCRtpTransceiverInit, SSRC,
         rtp_sender::{RTCRtpCodingParameters, RTCRtpEncodingParameters, RtpCodecKind},
     },
 };
@@ -67,8 +67,20 @@ impl AudioChannel {
             }],
         )));
 
-        peer.add_track(Arc::clone(&track) as Arc<dyn TrackLocal>)
-            .await?;
+        // add_transceiver_from_track (not the simpler add_track) so this always gets its
+        // own dedicated transceiver: add_track instead reuses *any* existing sender-less
+        // audio transceiver it finds, which was hijacking the recvonly transceiver
+        // reserved for the Guest's mic (see mod.rs) — upgrading it to sendrecv and
+        // carrying host audio on the mic's negotiated m-line, which Chrome then rejected
+        // as an incompatible direction for what it had offered as sendonly.
+        peer.add_transceiver_from_track(
+            Arc::clone(&track) as Arc<dyn TrackLocal>,
+            Some(RTCRtpTransceiverInit {
+                direction: RTCRtpTransceiverDirection::Sendonly,
+                ..Default::default()
+            }),
+        )
+        .await?;
 
         info!(audio_config = ?config, codec = ?codec, "finished audio track setup");
 

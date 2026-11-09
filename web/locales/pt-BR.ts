@@ -27,6 +27,8 @@ export const ptBR: Translations = {
         hideKeyboard: "Ocultar Teclado",
         fullscreen: "Tela Cheia",
         stats: "Estatísticas",
+        requestMicrophone: "Solicitar Microfone",
+        microphoneNotSupported: "Microfone não é suportado neste navegador",
         exit: "Sair",
         mouseMode: "Modo do Mouse",
         touchMode: "Modo de Toque",

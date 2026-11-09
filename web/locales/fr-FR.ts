@@ -27,6 +27,8 @@ export const frFr: Translations = {
         hideKeyboard: "Masquer le clavier",
         fullscreen: "Plein écran",
         stats: "Stats",
+        requestMicrophone: "Demander le microphone",
+        microphoneNotSupported: "Le microphone n'est pas pris en charge dans ce navigateur",
         exit: "Quitter",
         mouseMode: "Mode souris",
         touchMode: "Mode tactile",

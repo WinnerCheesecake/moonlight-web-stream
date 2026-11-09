@@ -27,6 +27,8 @@ export const koKR: Translations = {
         hideKeyboard: "키보드 숨기기",
         fullscreen: "전체 화면",
         stats: "통계",
+        requestMicrophone: "마이크 요청",
+        microphoneNotSupported: "이 브라우저에서는 마이크를 지원하지 않습니다",
         exit: "종료",
         mouseMode: "마우스 모드",
         touchMode: "터치 모드",

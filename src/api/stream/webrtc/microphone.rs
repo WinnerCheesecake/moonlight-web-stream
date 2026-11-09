@@ -1,18 +1,25 @@
-use std::{future::pending, sync::Arc, time::Duration};
+use std::{future::pending, sync::Arc};
 
-use bytes::Bytes;
+use audiopus::{Channels, SampleRate, coder::Decoder as OpusDecoder};
 use moonlight_common::webrtc::sdp::Session;
 use tokio::{
     spawn,
     sync::mpsc::{UnboundedReceiver, unbounded_channel},
 };
-use tracing::{Instrument, debug, debug_span};
+use tracing::{Instrument, debug, debug_span, info, warn};
 use webrtc::media_stream::track_remote::{TrackRemote, TrackRemoteEvent};
 
 use crate::app::AppError;
 
+/// Browsers send a plain `getUserMedia({audio: true})` mic track as mono Opus — matches
+/// `web/stream/audio/microphone_pipe.ts`, which requests no channel/rate constraints.
+const MIC_SAMPLE_RATE: SampleRate = SampleRate::Hz48000;
+const MIC_CHANNELS: Channels = Channels::Mono;
+/// Max Opus frame size at 48kHz is 120ms (5760 samples); size the decode buffer generously.
+const MAX_DECODED_SAMPLES: usize = 5760;
+
 pub enum MicChannelEvent {
-    OnFrame { timestamp: Duration, data: Bytes },
+    OnFrame { samples: Vec<f32> },
     Closed,
 }
 
@@ -46,22 +53,42 @@ impl MicChannel {
 
         spawn(
             async move {
+                let mut decoder = match OpusDecoder::new(MIC_SAMPLE_RATE, MIC_CHANNELS) {
+                    Ok(decoder) => decoder,
+                    Err(err) => {
+                        warn!(error = %err, "failed to create opus decoder for guest mic, dropping mic track");
+                        return;
+                    }
+                };
+                let mut decode_buffer = [0f32; MAX_DECODED_SAMPLES];
+                let mut logged_first_packet = false;
+
                 while let Some(event) = track.poll().await {
                     match event {
                         TrackRemoteEvent::OnOpen(info) => {
-                            debug!(info = ?info, "current microphone channel");
+                            info!(info = ?info, "guest mic track opened");
                         }
                         TrackRemoteEvent::OnRtpPacket(packet) => {
-                            let timestamp = Duration::from_millis(
-                                // opus clock rate is 48
-                                (packet.header.timestamp / 48) as u64,
-                            );
+                            if !logged_first_packet {
+                                logged_first_packet = true;
+                                info!("received first guest mic rtp packet");
+                            }
 
-                            // Opus frames don't have any packetization
+                            let decoded_samples = match decoder.decode_float(
+                                Some(packet.payload.as_ref()),
+                                decode_buffer.as_mut_slice(),
+                                false,
+                            ) {
+                                Ok(count) => count,
+                                Err(err) => {
+                                    warn!(error = %err, "failed to decode guest mic opus frame, skipping it");
+                                    continue;
+                                }
+                            };
+
                             if sender
                                 .send(MicChannelEvent::OnFrame {
-                                    timestamp,
-                                    data: packet.payload,
+                                    samples: decode_buffer[..decoded_samples].to_vec(),
                                 })
                                 .is_err()
                             {

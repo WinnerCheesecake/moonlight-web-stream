@@ -1026,6 +1026,7 @@ class ViewerSidebar implements Component, Sidebar, ScreenKeyboardListener {
     private fullscreenButton = document.createElement("button")
 
     private statsButton = document.createElement("button")
+    private requestMicrophoneButton = document.createElement("button")
     private exitStreamButton = document.createElement("button")
 
     private mouseMode: SelectComponent
@@ -1090,6 +1091,20 @@ class ViewerSidebar implements Component, Sidebar, ScreenKeyboardListener {
             }
         })
         this.buttonDiv.appendChild(this.statsButton)
+
+        // Request microphone — an explicit button instead of relying on it firing as a
+        // side effect of some other click/keypress (onUserInteraction), which is easy to
+        // miss and doesn't fire at all once mouse/keyboard are view-only by default.
+        this.requestMicrophoneButton.innerText = I.stream.requestMicrophone
+        this.requestMicrophoneButton.addEventListener("click", () => {
+            const micListener = this.app.getStream()?.getMicrophoneListener()
+            if (micListener && "tryRequestMicrophone" in micListener && typeof micListener.tryRequestMicrophone == "function") {
+                micListener.tryRequestMicrophone()
+            } else {
+                showNotification(I.stream.microphoneNotSupported, "error")
+            }
+        })
+        this.buttonDiv.appendChild(this.requestMicrophoneButton)
 
         // Close stream
         this.exitStreamButton.innerText = I.stream.exit
