@@ -79,8 +79,8 @@ too_many_arguments = "allow"
 unwrap_used = "warn"
 todo = "warn"
 
-# Ableton Together: local fork of moonlight-common with a wider audio frame-drop tolerance
-# (see external/moonlight-common-rust, branch ableton-together-audio-jitter-fork) — keeps
+# dawswithfriends: local fork of moonlight-common with a wider audio frame-drop tolerance
+# (see external/moonlight-common-rust, branch dawswithfriends-audio-jitter-fork) — keeps
 # the upstream git dependency declaration above untouched/documented, just redirects
 # resolution to our checkout.
 [patch."https://github.com/MrCreativ3001/moonlight-common-rust.git"]
