@@ -228,4 +228,10 @@ pub trait Storage {
         &self,
         query: StorageQueryHosts,
     ) -> Result<Vec<(HostId, Option<StorageHost>)>, AppError>;
+
+    /// dawswithfriends is single-host, collaborative-by-design: every paired Sunshine host
+    /// should be visible to any user, including the passwordless Guest (see
+    /// `App::ensure_hosts_global`), not just whoever happened to pair it. Clears `owner` on
+    /// every host that currently has one; a no-op for hosts that are already global.
+    async fn clear_all_host_owners(&self) -> Result<(), AppError>;
 }

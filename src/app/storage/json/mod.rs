@@ -844,4 +844,22 @@ impl Storage for JsonStorage {
 
         Ok(user_hosts)
     }
+
+    async fn clear_all_host_owners(&self) -> Result<(), AppError> {
+        let hosts = self.hosts.read().await;
+
+        let mut changed = false;
+        for host in hosts.values() {
+            let mut host = host.write().await;
+            if host.owner.take().is_some() {
+                changed = true;
+            }
+        }
+
+        if changed {
+            self.force_write();
+        }
+
+        Ok(())
+    }
 }

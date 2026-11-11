@@ -39,6 +39,9 @@ moonlight-common = { git = "https://github.com/MrCreativ3001/moonlight-common-ru
 webrtc = "0.21.1"
 rtc = "0.21.1"
 
+# NAT traversal (best-effort automatic router port mapping, see upnp.rs)
+igd-next = { version = "0.15.1", features = ["aio_tokio"] }
+
 # Log
 log = { version = "0.4.28", features = ["serde"] }
 tracing = "0.1.44"
@@ -75,3 +78,10 @@ coreaudio-rs = { version = "0.14.2", default-features = false, features = ["audi
 too_many_arguments = "allow"
 unwrap_used = "warn"
 todo = "warn"
+
+# Ableton Together: local fork of moonlight-common with a wider audio frame-drop tolerance
+# (see external/moonlight-common-rust, branch ableton-together-audio-jitter-fork) — keeps
+# the upstream git dependency declaration above untouched/documented, just redirects
+# resolution to our checkout.
+[patch."https://github.com/MrCreativ3001/moonlight-common-rust.git"]
+moonlight-common = { path = "../moonlight-common-rust" }

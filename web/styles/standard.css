@@ -1287,6 +1287,32 @@ canvas.video-stream {
     grid-template-columns: 50% 50%;
 }
 
+/* Ableton Together: simple, square, flat blue buttons for the Guest stream sidebar —
+   overrides the app-wide glowing/rounded/lift-on-hover button style, scoped to just this
+   sidebar so the rest of the app (login, admin) keeps its usual look. */
+.sidebar-stream-buttons button {
+    background-color: #0057c2;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    transform: none;
+    padding: 10px 14px;
+    margin: 4px;
+    font-size: 1rem;
+}
+
+.sidebar-stream-buttons button:hover:not(:disabled) {
+    background-color: #0066e0;
+    box-shadow: none;
+    transform: none;
+    border: none;
+}
+
+.sidebar-stream-buttons button:disabled {
+    background-color: #3a3a3a;
+    color: rgba(255, 255, 255, 0.5);
+}
+
 .hiddeninput {
     position: absolute;
     z-index: -1000;

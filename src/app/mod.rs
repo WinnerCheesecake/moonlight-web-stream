@@ -661,34 +661,63 @@ impl App {
             .await
     }
 
-    /// Ableton Together always wants a Guest to be able to open the stream link with no
-    /// login step: creates a passwordless "Gość" user on the default (non-admin) role and
-    /// makes it the default_user, so an unauthenticated request (UserAuth::None, i.e. no
-    /// session cookie) is treated as this user instead of being rejected. Idempotent — a
-    /// no-op once a default user already exists, called from the admin login flow since
-    /// that's the first point an `&Admin` handle is available.
-    pub async fn ensure_default_guest(&self, admin: &Admin) -> Result<(), AppError> {
-        if self.default_user().await?.is_some() {
-            return Ok(());
+    /// dawswithfriends wants a Guest to be able to open the stream link with no login
+    /// step, but *only* once they've presented the join token checked by `guest_link::guest_join`
+    /// (`GET /g?token=...`) — unlike the original design, this no longer makes the Guest
+    /// user into the global `default_user`, since that treated ANY request with no session
+    /// cookie at all as an authenticated Guest, open to literally anyone who could reach the
+    /// port. Idempotent: returns the existing "Gość" user if one was already provisioned.
+    pub async fn ensure_guest_user(&self) -> Result<AuthenticatedUser, AppError> {
+        match self.user_by_name("Gość").await {
+            Ok(user) => Ok(AuthenticatedUser { inner: user }),
+            Err(AppError::UserNotFound) => {
+                let role = self.default_role().await?;
+
+                let guest = self
+                    .add_user_no_auth(StorageUserAdd {
+                        role_id: role.id(),
+                        name: "Gość".to_string(),
+                        password: None,
+                        client_unique_id: "dawswithfriends-guest".to_string(),
+                    })
+                    .await?;
+
+                info!("provisioned passwordless Guest user for token-gated link-only joining");
+
+                Ok(guest)
+            }
+            Err(err) => Err(err),
         }
+    }
 
-        let role = self.default_role().await?;
+    /// dawswithfriends only ever has one Sunshine host, shared by the Host and whichever
+    /// Guest(s) join — there's no real concept of a host "belonging" to one account. But
+    /// `first_login_assign_global_hosts` (on by default) moves a freshly-paired host to the
+    /// admin's ownership on first login, which then makes it invisible to the passwordless
+    /// "Gość" user (`User::host`/`hosts()` only return a host if it's global or owned by
+    /// that same user) — the Guest lands on an empty "add a host" screen instead of the
+    /// stream. Called at every startup so this stays true regardless of how the host got
+    /// paired; a no-op once already global.
+    pub async fn ensure_hosts_global(&self) -> Result<(), AppError> {
+        self.inner.storage.clear_all_host_owners().await
+    }
 
-        let guest = self
-            .add_user(
-                admin,
-                StorageUserAdd {
-                    role_id: role.id(),
-                    name: "Gość".to_string(),
-                    password: None,
-                    client_unique_id: "ableton-together-guest".to_string(),
-                },
-            )
-            .await?;
+    /// One-time migration off the old, fully-open design: earlier builds made the "Gość"
+    /// user the global `default_user`, so any request with no session cookie at all was
+    /// silently treated as that Guest. Clears it if still set, so `UserAuth::None` goes back
+    /// to being rejected everywhere except through the token-gated `/g` link. Called once at
+    /// server startup; a no-op if the default user was never set or isn't "Gość".
+    pub async fn clear_guest_default_user_if_stale(&self) -> Result<(), AppError> {
+        let Some(mut default_user) = self.default_user().await? else {
+            return Ok(());
+        };
 
-        self.set_default_user(admin, Some(&guest)).await?;
-
-        info!("provisioned default passwordless Guest user for link-only joining");
+        if default_user.detailed_user_no_auth().await?.name == "Gość" {
+            self.inner.storage.set_default_user(None).await?;
+            info!(
+                "cleared legacy auto-default Guest user; Guest access now requires the token-gated /g link"
+            );
+        }
 
         Ok(())
     }

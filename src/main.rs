@@ -47,7 +47,9 @@ mod audio_bridge;
 mod cli;
 mod config;
 mod control_gate;
+mod guest_link;
 mod human_json;
+mod upnp;
 
 #[actix_web::main]
 async fn main() {
@@ -273,6 +275,15 @@ async fn start(config: Config) -> Result<(), anyhow::Error> {
     let app = App::new(config.clone()).await?;
     let app = Data::new(app);
 
+    if let Err(err) = app.clear_guest_default_user_if_stale().await {
+        error!(error = %err, "failed to check/clear legacy auto-default guest user");
+    }
+    if let Err(err) = app.ensure_hosts_global().await {
+        error!(error = %err, "failed to make paired hosts globally visible");
+    }
+
+    upnp::spawn_best_effort_mapping(app.config());
+
     let bind_address = app.config().web_server.bind_address;
     let server = HttpServer::new({
         let url_path_prefix = config.web_server.url_path_prefix.clone();
@@ -294,6 +305,7 @@ async fn start(config: Config) -> Result<(), anyhow::Error> {
                                 .add(("Expires", "0")),
                         )
                         .service(api_service())
+                        .service(guest_link::guest_join)
                         .service(web_config_js_service())
                         .service(web_service()),
                 )

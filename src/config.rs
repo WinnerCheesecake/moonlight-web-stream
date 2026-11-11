@@ -85,7 +85,12 @@ pub struct WebRtcConfig {
     pub ice_servers: Vec<RtcIceServer>,
     #[serde(default)]
     pub ice_server_script: Option<String>,
-    #[serde(default)]
+    /// A fixed range rather than ephemeral ports lets `upnp.rs` map it on the Host's router
+    /// once at startup — ephemeral, per-connection ports can't be mapped ahead of time. Small
+    /// on purpose: this project is single-Host/single-or-few-Guest, not a multi-tenant
+    /// server, so a handful of ports is plenty and keeps the number of UPnP mapping calls
+    /// (one per port — most routers' IGD implementations don't support ranges) low.
+    #[serde(default = "default_webrtc_port_range")]
     pub port_range: Option<PortRange>,
     #[serde(default)]
     pub nat_1to1: Option<WebRtcNat1To1Mapping>,
@@ -98,7 +103,7 @@ impl Default for WebRtcConfig {
         Self {
             ice_servers: default_ice_servers(),
             ice_server_script: None,
-            port_range: None,
+            port_range: default_webrtc_port_range(),
             nat_1to1: None,
             include_loopback_candidates: default_include_loopback_candidates(),
         }
@@ -157,6 +162,12 @@ fn default_ice_servers() -> Vec<RtcIceServer> {
 }
 fn default_include_loopback_candidates() -> bool {
     true
+}
+fn default_webrtc_port_range() -> Option<PortRange> {
+    Some(PortRange {
+        min: 50000,
+        max: 50009,
+    })
 }
 
 // -- Web Server Config

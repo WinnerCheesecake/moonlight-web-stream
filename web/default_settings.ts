@@ -39,7 +39,12 @@ const trueDefaultSettings: Settings =
     // possible values: "auto", "webrtc", "websocket"
     "dataTransport": "auto",
     "language": "en",
-    "enterFullscreenOnStreamStart": false,
+    // dawswithfriends: Keyboard Lock (the API that reserves OS/browser shortcuts like
+    // Cmd+Tab or Cmd+W for the page) only works in fullscreen — without this, most real
+    // keyboard shortcuts never reach the Guest's DAW at all, silently swallowed by the
+    // browser/OS first. Upstream defaults this off since it assumes a game/console-style
+    // stream where fullscreen is opt-in, not something you always want.
+    "enterFullscreenOnStreamStart": true,
     "toggleFullscreenWithKeybind": false,
     // possible values: "standard", "old"
     "pageStyle": "standard",

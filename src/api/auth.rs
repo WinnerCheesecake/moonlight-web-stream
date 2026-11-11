@@ -137,16 +137,6 @@ async fn login(
         .await?
     };
 
-    // Ableton Together: once an admin logs in, make sure link-only Guest joining is set
-    // up (see ensure_default_guest's doc comment). Harmless to attempt on every admin
-    // login — it's a no-op once already provisioned — and skipped entirely for a
-    // non-admin login.
-    if let Ok(admin) = user.clone().into_admin().await
-        && let Err(err) = app.ensure_default_guest(&admin).await
-    {
-        tracing::warn!(error = %err, "failed to provision default guest user");
-    }
-
     let session_expiration = app.config().web_server.session_cookie_expiration;
 
     let session = user.new_session(session_expiration).await?;

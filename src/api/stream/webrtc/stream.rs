@@ -167,11 +167,13 @@ pub async fn webrtc_loop(
 
                 match event {
                     // Sunshine assumes the Host machine is otherwise idle (streaming to a
-                    // console/TV); Ableton Together's Host is actively sitting at their own
+                    // console/TV); dawswithfriends's Host is actively sitting at their own
                     // computer running their DAW. So by default the Guest is a pure
                     // viewer+mic — mouse/keyboard/gamepad input is only relayed while
-                    // control_gate::guest_has_control() is true (toggled from HostApp).
+                    // control_gate::guest_has_control() is true (toggled from HostApp, or
+                    // auto-claimed below in collaboration mode).
                     ControlChannelEvent::Packet(ControlPacket::WebState { sequence_number, keys }) => {
+                        control_gate::claim_guest_control();
                         if !control_gate::guest_has_control() {
                             continue;
                         }
@@ -201,11 +203,15 @@ pub async fn webrtc_loop(
 
                         continue;
                     }
-                    ControlChannelEvent::Packet(packet)
-                        if control_gate::is_guest_input_packet(&packet)
-                            && !control_gate::guest_has_control() =>
-                    {
-                        continue;
+                    ControlChannelEvent::Packet(packet) if control_gate::is_guest_input_packet(&packet) => {
+                        control_gate::claim_guest_control();
+                        if !control_gate::guest_has_control() {
+                            continue;
+                        }
+
+                        if let Err(err) = stream.send_raw(packet) {
+                            warn!(error = %err, "failed to relay webrtc client packet to server");
+                        }
                     }
                     ControlChannelEvent::Packet(packet) => {
                         if let Err(err) = stream.send_raw(packet) {

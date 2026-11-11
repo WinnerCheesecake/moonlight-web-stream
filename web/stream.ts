@@ -1,8 +1,7 @@
 import { Api, apiGetRole, getApi } from "./api"
-import { DetailedRole, StreamKeys } from "./api_bindings"
+import { DetailedRole } from "./api_bindings"
 import { Component } from "./component/index"
 import { SelectComponent } from "./component/input"
-import { FormModal } from "./component/modal/form"
 import { getModalBackground, Modal, showMessage, showModal } from "./component/modal/index"
 import { showNotification } from "./component/notification"
 import { getLocalStreamSettings, Settings, TransportType } from "./component/settings_menu"
@@ -13,7 +12,6 @@ import "./polyfill/index"
 import { KeyboardModeChangeEvent, likelyHasNativeOnScreenKeyboard, ScreenKeyboard, ScreenKeyboardListener, TextEvent } from "./keyboard"
 import { InfoEvent, Stream, StreamCapabilities } from "./stream/index"
 import { defaultStreamInputConfig, MouseMode, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input"
-import { emptyKeyModifiers } from "./stream/keyboard"
 import { LogMessageType } from "./stream/log"
 import { streamStatsToText } from "./stream/stats"
 import "./styles/index"
@@ -130,6 +128,11 @@ function parseSettingsFromQuery(queryParams: URLSearchParams): Partial<Settings>
     const videoSize = queryParams.get("videoSize")
     if (videoSize) {
         settings.videoSize = videoSize as Settings["videoSize"]
+    }
+
+    const videoCodec = queryParams.get("videoCodec")
+    if (videoCodec) {
+        settings.videoCodec = videoCodec as Settings["videoCodec"]
     }
 
     const width = queryParams.get("videoSizeCustom.width")
@@ -1018,18 +1021,14 @@ class ViewerSidebar implements Component, Sidebar, ScreenKeyboardListener {
 
     private buttonDiv = document.createElement("div")
 
-    private sendKeycodeButton = document.createElement("button")
-
     private keyboardButton = document.createElement("button")
 
-    private lockMouseButton = document.createElement("button")
     private fullscreenButton = document.createElement("button")
 
     private statsButton = document.createElement("button")
     private requestMicrophoneButton = document.createElement("button")
     private exitStreamButton = document.createElement("button")
 
-    private mouseMode: SelectComponent
     private touchMode: SelectComponent
 
     constructor(app: ViewerApp) {
@@ -1040,27 +1039,6 @@ class ViewerSidebar implements Component, Sidebar, ScreenKeyboardListener {
 
         this.buttonDiv.classList.add("sidebar-stream-buttons")
         this.div.appendChild(this.buttonDiv)
-
-        // Send keycode
-        this.sendKeycodeButton.innerText = I.stream.sendKeycode
-        this.sendKeycodeButton.addEventListener("click", async () => {
-            const key = await showModal(new SendKeycodeModal())
-
-            if (key == null) {
-                return
-            }
-
-            this.app.getStream()?.getInput().sendKey(true, key, emptyKeyModifiers())
-            this.app.getStream()?.getInput().sendKey(false, key, emptyKeyModifiers())
-        })
-        this.buttonDiv.appendChild(this.sendKeycodeButton)
-
-        // Pointer Lock
-        this.lockMouseButton.innerText = I.stream.lockMouse
-        this.lockMouseButton.addEventListener("click", async () => {
-            await this.app.requestPointerLock(true)
-        })
-        this.buttonDiv.appendChild(this.lockMouseButton)
 
         // Screen Keyboard Buttons
         this.keyboardButton.innerText = I.stream.keyboard
@@ -1121,19 +1099,6 @@ class ViewerSidebar implements Component, Sidebar, ScreenKeyboardListener {
         })
         this.buttonDiv.appendChild(this.exitStreamButton)
 
-        // Select Mouse Mode
-        this.mouseMode = new SelectComponent("mouseMode", [
-            { value: "relative", name: I.stream.relative },
-            { value: "follow", name: I.stream.follow },
-            { value: "localCursor", name: I.stream.localCursor },
-            { value: "pointAndDrag", name: I.stream.pointAndDrag }
-        ], {
-            displayName: I.stream.mouseMode,
-            preSelectedOption: this.app.getInputConfig().mouseMode
-        })
-        this.mouseMode.addChangeListener(this.onMouseModeChange.bind(this))
-        this.mouseMode.mount(this.div)
-
         // Select Touch Mode
         this.touchMode = new SelectComponent("touchMode", [
             { value: "touch", name: I.stream.touch },
@@ -1166,13 +1131,6 @@ class ViewerSidebar implements Component, Sidebar, ScreenKeyboardListener {
         this.app.onScreenKeyboardModeChange(event)
     }
 
-    // -- Mouse Mode
-    private onMouseModeChange() {
-        const config = this.app.getInputConfig()
-        config.mouseMode = this.mouseMode.getValue() as any
-        this.app.setInputConfig(config)
-    }
-
     // -- Touch Mode
     private onTouchModeChange() {
         const config = this.app.getInputConfig()
@@ -1192,56 +1150,6 @@ class ViewerSidebar implements Component, Sidebar, ScreenKeyboardListener {
     }
     unmount(parent: HTMLElement): void {
         parent.removeChild(this.div)
-    }
-}
-
-class SendKeycodeModal extends FormModal<number> {
-
-    private dropdownSearch: SelectComponent
-
-    constructor() {
-        super()
-
-        const keyList = []
-        for (const keyNameRaw in StreamKeys) {
-            const keyName = keyNameRaw as keyof typeof StreamKeys
-            const keyValue = StreamKeys[keyName]
-
-            const PREFIX = "VK_"
-
-            let name: string = keyName
-            if (name.startsWith(PREFIX)) {
-                name = name.slice(PREFIX.length)
-            }
-
-            keyList.push({
-                value: keyValue.toString(),
-                name
-            })
-        }
-
-        this.dropdownSearch = new SelectComponent("winKeycode", keyList, {
-            hasSearch: true,
-            displayName: I.stream.selectKeycode
-        })
-    }
-
-    mountForm(form: HTMLFormElement): void {
-        this.dropdownSearch.mount(form)
-    }
-
-
-    reset(): void {
-        this.dropdownSearch.reset()
-    }
-
-    submit(): number | null {
-        const keyString = this.dropdownSearch.getValue()
-        if (keyString == null) {
-            return null
-        }
-
-        return parseInt(keyString)
     }
 }
 

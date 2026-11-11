@@ -32,6 +32,7 @@ use moonlight_common::webrtc::answer::WebRTCSessionAnswer;
 use moonlight_common::webrtc::header::WebRTCLinkHeader;
 use moonlight_common::webrtc::offer::WebRTCSessionOffer;
 use moonlight_common::webrtc::sdp::Session;
+use rtc::ice::mdns::MulticastDnsMode;
 use rtc::ice::network_type::NetworkType;
 use rtc::interceptor::{FlexFec03SendBuilder, Registry, Slot};
 use rtc::peer_connection::configuration::media_engine::{MIME_TYPE_FLEX_FEC03, MIME_TYPE_OPUS};
@@ -327,6 +328,12 @@ pub async fn webrtc_post(
 
     setting_engine = setting_engine.with_network_types(vec![NetworkType::Udp4]);
 
+    // dawswithfriends always connects Guests through HostApp's direct token link — never
+    // via LAN auto-discovery — so mDNS candidate gathering/querying is pure overhead. Left
+    // on default (QueryOnly), it spams the log with "Failed to write packet to
+    // 224.0.0.251:5353" / "mDNS Query timed out" on every connection without ever being used.
+    setting_engine = setting_engine.with_multicast_dns_mode(MulticastDnsMode::Disabled);
+
     // Create video
     let mut video_channel = VideoChannel::new(
         &offer_sdp,
@@ -382,7 +389,15 @@ pub async fn webrtc_post(
     } else {
         0
     };
-    let local_addrs = vec![SocketAddr::new(Ipv4Addr::new(0, 0, 0, 0).into(), port)];
+    // Bind to the actual LAN interface address, not the 0.0.0.0 wildcard: on at least some
+    // networks (confirmed on an iPhone Personal Hotspot) a wildcard-bound UDP socket's sends
+    // to a real, specific destination fail outright with "No route to host" — the same
+    // reject-route behavior `upnp.rs` already works around for its own socket. Falls back to
+    // the wildcard if the LAN IP can't be determined, matching the old behavior.
+    let bind_ip = crate::upnp::local_ipv4()
+        .map(std::net::IpAddr::V4)
+        .unwrap_or_else(|| Ipv4Addr::new(0, 0, 0, 0).into());
+    let local_addrs = vec![SocketAddr::new(bind_ip, port)];
 
     // Initialize senders and receivers for events
     let (on_data_channel_sender, on_data_channel) =
@@ -506,7 +521,7 @@ pub async fn webrtc_post(
         // TODO: what color space / range? is this in the sdp?
         color_space: ColorSpace::Rec709,
         color_range: ColorRange::Limited,
-        // Ableton Together is collaborative listening, not one-way remote desktop:
+        // dawswithfriends is collaborative listening, not one-way remote desktop:
         // the Host must always keep hearing their own DAW, regardless of what the
         // client's "play audio locally too" setting says (it defaults off, since
         // upstream Moonlight is built for the opposite — gaming where the Host isn't
