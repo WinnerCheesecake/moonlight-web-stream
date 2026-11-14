@@ -488,14 +488,19 @@ class ViewerApp implements Component {
 
     // Mouse
     onMouseButtonDown(event: MouseEvent) {
+        // Unconditionally, before any early return below: unmuting audio is a side effect
+        // every genuine user gesture should have, regardless of what else that gesture also
+        // triggers (entering fullscreen). The auto-fullscreen request can fail (e.g. iOS
+        // Safari routinely rejects it) and then re-arm for the next interaction, which would
+        // otherwise swallow every subsequent click/tap too and audio would never unmute.
+        this.onUserInteraction()
+
         if (this.consumeAutoFullscreenInteraction()) {
             this.pendingAutoFullscreenMouseGesture = true
             event.preventDefault()
             event.stopPropagation()
             return
         }
-
-        this.onUserInteraction()
 
         event.preventDefault()
         this.stream.getInput().onMouseDown(event, this.getStreamRect());
@@ -543,13 +548,16 @@ class ViewerApp implements Component {
 
     // Touch
     onTouchStart(event: TouchEvent) {
+        // See the comment in onMouseButtonDown — unmuting must happen on every genuine
+        // gesture, not just ones where the auto-fullscreen request (which can fail and
+        // re-arm itself, swallowing further taps too) doesn't intercept it first.
+        this.onUserInteraction()
+
         if (this.beginAutoFullscreenTouchGesture()) {
             event.preventDefault()
             event.stopPropagation()
             return
         }
-
-        this.onUserInteraction()
 
         event.preventDefault()
         this.stream.getInput().onTouchStart(event, this.getStreamRect())
@@ -557,13 +565,13 @@ class ViewerApp implements Component {
         event.stopPropagation()
     }
     onTouchEnd(event: TouchEvent) {
+        this.onUserInteraction()
+
         if (this.consumeAutoFullscreenTouchGesture()) {
             event.preventDefault()
             event.stopPropagation()
             return
         }
-
-        this.onUserInteraction()
 
         event.preventDefault()
         this.stream.getInput().onTouchEnd(event, this.getStreamRect())
@@ -571,6 +579,8 @@ class ViewerApp implements Component {
         event.stopPropagation()
     }
     onTouchCancel(event: TouchEvent) {
+        this.onUserInteraction()
+
         if (this.pendingAutoFullscreenTouchGesture) {
             this.pendingAutoFullscreenTouchGesture = false
             event.preventDefault()
@@ -579,8 +589,6 @@ class ViewerApp implements Component {
         }
 
         this.pendingAutoFullscreenTouchGesture = false
-
-        this.onUserInteraction()
 
         event?.preventDefault()
         this.stream.getInput().onTouchCancel(event, this.getStreamRect())
