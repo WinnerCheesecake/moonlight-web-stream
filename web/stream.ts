@@ -380,7 +380,7 @@ class ViewerApp implements Component {
 
     // -- Auto Fullscreen
     private armFullscreenOnNextInteraction() {
-        if (this.autoEnterFullscreenOnStart) {
+        if (this.autoEnterFullscreenOnStart && this.isFullscreenSupported()) {
             this.fullscreenOnNextInteractionArmed = true
         }
     }
@@ -693,6 +693,15 @@ class ViewerApp implements Component {
     }
     isFullscreen(): boolean {
         return "fullscreenElement" in document && !!document.fullscreenElement
+    }
+    /// iOS Safari, notably, has no Fullscreen API on arbitrary elements at all (only on
+    /// `<video>`, via a separate, unrelated API) — `document.body.requestFullscreen` simply
+    /// doesn't exist there. Checked once up front so the auto-fullscreen-on-first-interaction
+    /// flow never arms itself on a browser where it can only ever fail, instead of showing
+    /// "Fullscreen is not supported by your browser!" on every single tap, forever, with no
+    /// action the user could even take in response.
+    private isFullscreenSupported(): boolean {
+        return "requestFullscreen" in document.body && typeof document.body.requestFullscreen == "function"
     }
     private async onFullscreenChange() {
         if (this.isFullscreen()) {
