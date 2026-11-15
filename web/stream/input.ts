@@ -255,7 +255,22 @@ export class StreamInput {
         if (this.config.mouseMode == "relative") {
             this.sendMouseMoveClientCoordinates(event.movementX, event.movementY, rect)
         } else if (this.config.mouseMode == "follow") {
-            this.sendMousePositionClientCoordinates(event.clientX, event.clientY, rect)
+            if (event.buttons) {
+                // Dragging with a button held: switch to raw, unscaled relative deltas
+                // instead of absolute positioning. "follow" mode's absolute mapping scales
+                // by (host resolution / displayed video size) — harmless for ordinary
+                // pointing/clicking, but it amplifies every physical pixel of Guest movement
+                // by that same ratio (easily 5-10x when viewing a high-res stream in a small
+                // phone browser window), which makes fine drag-to-adjust controls (DAW knobs,
+                // virtual instrument parameters) nearly impossible to use precisely. A knob
+                // drag doesn't care about the cursor's absolute screen position anyway — only
+                // about how far you actually moved — so an unscaled 1:1 delta here matches
+                // what a real, local mouse plugged into the Host would feel like, independent
+                // of whatever size the Guest happens to be viewing the stream at.
+                this.sendMouseMove(event.movementX, event.movementY)
+            } else {
+                this.sendMousePositionClientCoordinates(event.clientX, event.clientY, rect)
+            }
         } else if (this.config.mouseMode == "localCursor") {
             this.initializeLocalCursor(rect, event.clientX, event.clientY)
             this.moveLocalCursorClientCoordinates(event.movementX, event.movementY, rect)
